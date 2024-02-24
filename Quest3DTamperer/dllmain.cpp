@@ -582,7 +582,6 @@ void d3d9_init()
         return;
     }
 
-  // TODO: find window dynamically
     gameHandle = find_main_window(GetCurrentProcessId());
 
 #ifdef _WIN64
