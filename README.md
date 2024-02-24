@@ -1,3 +1,8 @@
+### Fork info
+This fork was made for a friend and will not be maintained. The project now uses vcpkg for dependencies. Please run `vcpkg install` before compilation.
+
+----
+
 # Quest3DTamperer
 **PLEASE NOTE THAT THIS IS STILL IN VERY EARLY DEVELOPMENT!**
 
