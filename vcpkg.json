@@ -1,0 +1,9 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "name": "quest3dtamperer",
+    "version": "0.15.2",
+    "dependencies": [
+      "minhook",
+      "spdlog"
+    ]
+  }

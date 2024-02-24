@@ -13,23 +13,30 @@
 #include "imgui/backends/imgui_impl_dx9.h"
 #include "imgui/imfilebrowser.h"
 
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/msvc_sink.h>
+
 //The Quest3D SDK isn't included in this repo!
 //You'll have to get it yourself.
 //Sorry.
 #include <A3d_List.h>
-#include <A3d_ChannelGroup.h>
 #include <A3d_Channels.h>
+#include <A3d_ChannelGroup.h>
 #include <A3d_EngineInterface.h>
 #include <Aco_String.h>
 #include <Aco_Float.h>
-#include <Aco_DX8_Texture.h>
+#include <Aco_DX8_D3DDeviceUse.h>
 #include <Aco_DX8_ObjectData.h>
+#include <Aco_DX8_Texture.h>
 
 //UGraphviz
 #include "UGraphviz/UGraphviz.hpp"
 
 //Graphviz
-#include <graphviz/gvc.h>
+// #include <graphviz/gvc.h>
+
+#include "ExternalFunc.h"
+
 using namespace Ubpa;
 
 //DISCLAIMER: I have literally never done DirectX stuff before
@@ -40,59 +47,15 @@ static EndScene oEndScene = NULL;
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-static void(__thiscall* TrueCallChannel)(A3d_Channel* self) = nullptr;
-//Calling the functions normally results in a game crash with an error about the ESP value not being saved correctly.
-//May be related to an SDK version mismatch?
-//TODO: Investigate this further at some point
-#pragma region Quest3D function definitions
-static const char* (__thiscall* ChannelGroup_GetChannelGroupFileName)(A3d_ChannelGroup* self) = nullptr;
-static const char* (__thiscall* ChannelGroup_GetPoolName)(A3d_ChannelGroup* self) = nullptr;
-static int(__thiscall* ChannelGroup_GetChannelCount)(A3d_ChannelGroup* self) = nullptr;
-static A3d_Channel* (__thiscall* ChannelGroup_GetChannel)(A3d_ChannelGroup* self, int) = nullptr;
-static bool(__thiscall* ChannelGroup_GetGroupIsProtected)(A3d_ChannelGroup* self) = nullptr;
-static bool(__thiscall* ChannelGroup_GetReadOnly)(A3d_ChannelGroup* self) = nullptr;
-static void(__thiscall* ChannelGroup_SetGroupIsProtected)(A3d_ChannelGroup* self, bool newValue) = nullptr;
-static void(__thiscall* ChannelGroup_SetReadOnly)(A3d_ChannelGroup* self, bool newValue) = nullptr;
-static bool(__thiscall* ChannelGroup_SaveChannelGroup)(A3d_ChannelGroup* self, const char* fileName) = nullptr;
-static int(__thiscall* ChannelGroup_GetGroupIndex)(A3d_ChannelGroup* self) = nullptr;
-static void(__thiscall* ChannelGroup_CallStartChannel)(A3d_ChannelGroup* self) = nullptr;
+uintptr_t FindFunction(const char* module, const char* symbol);
 
-static const char* (__thiscall* Channel_GetChannelName)(A3d_Channel* self) = nullptr;
-static A3d_Channel* (__thiscall* Channel_GetChild)(A3d_Channel* self, int childNr) = nullptr;
-static int (__thiscall* Channel_GetChildCount)(A3d_Channel* self) = nullptr;
-static int(__thiscall* Channel_GetChannelIDIndexNr)(A3d_Channel* self) = nullptr;
-
-static const char* (__thiscall* StringChannel_GetString)(Aco_StringChannel* self) = nullptr;
-static const char* (__thiscall* StringOperator_GetString)(void* self) = nullptr;
-static const char* (__thiscall* Lua_GetScript)(void* self) = nullptr;
-
-static void (__thiscall* StringChannel_SetString)(Aco_StringChannel* self, const char* string) = nullptr;
-static BOOL (__thiscall* Lua_SetScript)(void* self, const char* string) = nullptr;
-
-static int (__thiscall* Aco_DX8_Texture_GetDesiredWidth)(Aco_DX8_Texture* self) = nullptr;
-static int (__thiscall* Aco_DX8_Texture_GetDesiredHeight)(Aco_DX8_Texture* self) = nullptr;
-static IDirect3DTexture9* (__thiscall* Aco_DX8_Texture_GetTexture)(Aco_DX8_Texture* self) = nullptr;
-static char* (__thiscall* Aco_DX8_Texture_GetTextureBuffer)(Aco_DX8_Texture* self) = nullptr;
-static int (__thiscall* Aco_DX8_Texture_GetBufferSize)(Aco_DX8_Texture* self) = nullptr;
-static BOOL (__thiscall* Aco_DX8_Texture_LoadTextureFromFile)(Aco_DX8_Texture* self, char* path) = nullptr;
-static HRESULT (__thiscall* Aco_DX8_Texture_LockTexture)(Aco_DX8_Texture* self, int level, D3DLOCKED_RECT& pLockedRect) = nullptr;
-static void (__thiscall* Aco_DX8_Texture_UnlockTexture)(Aco_DX8_Texture* self, int level) = nullptr;
-static int (__thiscall* Aco_DX8_Texture_GetMipMapLevels)(Aco_DX8_Texture* self) = nullptr;
-static D3DSURFACE_DESC (__thiscall* Aco_DX8_Texture_GetTextureDescription)(Aco_DX8_Texture* self, int lvl) = nullptr;
-
-static D3DMATERIAL9 (__thiscall* Aco_DX8_MaterialChannel_GetMaterial)(void* self) = nullptr;
-
-static int (__thiscall* Aco_DX8_ObjectDataChannel_GetVertexCount)(Aco_DX8_ObjectDataChannel* self) = nullptr;
-static D3DXVECTOR3 (__thiscall* Aco_DX8_ObjectDataChannel_GetVertexPosition)(Aco_DX8_ObjectDataChannel* self, DWORD nr) = nullptr;
-
-static D3DXVECTOR3 (__thiscall* Aco_DX8_ObjectChannel_GetPosition)(void* self) = nullptr;
-
-static float (__thiscall* Aco_FloatChannel_GetFloat)(void* self) = nullptr;
-static float (__thiscall* Aco_FloatChannel_GetDefaultFloat)(void* self) = nullptr;
-static void (__thiscall* Aco_FloatChannel_SetFloat)(void* self, float value) = nullptr;
-
-static D3DXVECTOR3 (__thiscall* Aco_VectorChannel_GetVector)(void* self) = nullptr;
-#pragma endregion
+namespace ExtFunc {
+#ifdef _WIN64
+#include "quest3d_api.x64.inl"
+#else
+#include "quest3d_api.win32.inl"
+#endif
+}
 
 static bool init = false;
 bool showMenu;
@@ -172,8 +135,8 @@ std::size_t replace(std::string& inout, std::string_view what, std::string_view 
 }
 
 static void __fastcall CallChannelHook(A3d_Channel* self, DWORD edx)
-{
-    TrueCallChannel(self);
+{ 
+    ExtFunc::TrueCallChannel(self);
     if (engine == nullptr) {
         engine = self->engine;
     }
@@ -190,7 +153,7 @@ std::string GetChannelValue(A3d_Channel* channel)
 
     if (guid == STRING_GUID)
     {
-        auto channelString = StringChannel_GetString((Aco_StringChannel*)channel);
+        auto channelString = ExtFunc::StringChannel_GetString((Aco_StringChannel*)channel);
         if (channelString)
         {
             return channelString;
@@ -199,13 +162,13 @@ std::string GetChannelValue(A3d_Channel* channel)
     }
     if (guid == FLOAT_CHANNEL_GUID) {
         std::string resultString;
-        resultString += std::to_string(Aco_FloatChannel_GetFloat(channel));
+        resultString += std::to_string(ExtFunc::Aco_FloatChannel_GetFloat(channel));
         resultString += "\nDefault Value: ";
-        resultString += std::to_string(Aco_FloatChannel_GetDefaultFloat(channel));
+        resultString += std::to_string(ExtFunc::Aco_FloatChannel_GetDefaultFloat(channel));
         return resultString;
     }
     if (strstr(guidstr.c_str(), "F26BB40B-B196")) {
-        auto channelString = StringOperator_GetString(channel);
+        auto channelString = ExtFunc::StringOperator_GetString(channel);
         if (channelString)
         {
             return channelString;
@@ -224,14 +187,14 @@ void writeChannel(A3d_ChannelGroup* group, UGraphviz::Graph* graph)
 
 	for (int i{}; i < 50000; ++i)
 	{
-		A3d_Channel* channel = ChannelGroup_GetChannel(group, i);
+		A3d_Channel* channel = ExtFunc::ChannelGroup_GetChannel(group, i);
 		if (channel)
 		{
 			GUID channelGuid(channel->GetChannelType().guid);
-			auto node = registry.RegisterNode(std::to_string(Channel_GetChannelIDIndexNr(channel)));
+			auto node = registry.RegisterNode(std::to_string(ExtFunc::Channel_GetChannelIDIndexNr(channel)));
 
 			std::string nodeLabel;
-			nodeLabel += Channel_GetChannelName(channel);
+			nodeLabel += ExtFunc::Channel_GetChannelName(channel);
 			nodeLabel += "\\n";
 			nodeLabel += channel->GetChannelType().name;
 			std::string channelValue = GetChannelValue(channel);
@@ -249,7 +212,7 @@ void writeChannel(A3d_ChannelGroup* group, UGraphviz::Graph* graph)
 			}
 			registry.RegisterNodeAttr(node, UGraphviz::Attrs_label, nodeLabel);
 			registry.RegisterNodeAttr(node, UGraphviz::Attrs_shape, "box");
-			if (Channel_GetChannelIDIndexNr(channel) == 0)
+			if (ExtFunc::Channel_GetChannelIDIndexNr(channel) == 0)
 			{
 				registry.RegisterNodeAttr(node, UGraphviz::Attrs_color, "green");
 			}
@@ -259,21 +222,21 @@ void writeChannel(A3d_ChannelGroup* group, UGraphviz::Graph* graph)
 
 	for (int channelnum{}; channelnum < 50000; ++channelnum)
 	{
-		A3d_Channel* channel = ChannelGroup_GetChannel(group, channelnum);
+		A3d_Channel* channel = ExtFunc::ChannelGroup_GetChannel(group, channelnum);
 
 		if (channel)
 		{
-			const int children = Channel_GetChildCount(channel);
+			const int children = ExtFunc::Channel_GetChildCount(channel);
 
 			for (int childnum{}; childnum < children; ++childnum)
 			{
-				A3d_Channel* child(Channel_GetChild(channel, childnum));
+				A3d_Channel* child(ExtFunc::Channel_GetChild(channel, childnum));
 
 				if (child)
 				{
-					if (registry.IsRegisteredNode(std::to_string(Channel_GetChannelIDIndexNr(child))) && registry.IsRegisteredNode(std::to_string(Channel_GetChannelIDIndexNr(channel))))
+					if (registry.IsRegisteredNode(std::to_string(ExtFunc::Channel_GetChannelIDIndexNr(child))) && registry.IsRegisteredNode(std::to_string(ExtFunc::Channel_GetChannelIDIndexNr(channel))))
 					{
-						auto edge = registry.RegisterEdge(registry.GetNodeIndex(std::to_string(Channel_GetChannelIDIndexNr(channel))), registry.GetNodeIndex(std::to_string(Channel_GetChannelIDIndexNr(child))));
+						auto edge = registry.RegisterEdge(registry.GetNodeIndex(std::to_string(ExtFunc::Channel_GetChannelIDIndexNr(channel))), registry.GetNodeIndex(std::to_string(ExtFunc::Channel_GetChannelIDIndexNr(child))));
 						graph->AddEdge(edge);
 					}
 				}
@@ -358,25 +321,26 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
                 ImGui::InputInt("A3d_ChannelGroup to use", &channelGroupToUse, 1, 10);
                 ImGui::Spacing();
 
-                group = engine->GetChannelGroup(channelGroupToUse);
+                // group = engine->GetChannelGroup(channelGroupToUse);
+                group = ExtFunc::EngineInterface_GetChannelGroup(engine, channelGroupToUse);
                 if (group != nullptr) {
                     ImGui::Text("Info of current channel group:");
-                    ImGui::Text(ChannelGroup_GetPoolName(group));
-                    ImGui::Text(ChannelGroup_GetChannelGroupFileName(group));
-                    ImGui::Text("Is group protected: %s", ChannelGroup_GetGroupIsProtected ? "true" : "false");
-                    ImGui::Text("Is group read-only: %s", ChannelGroup_GetGroupIsProtected ? "true" : "false");
+                    ImGui::Text(ExtFunc::ChannelGroup_GetPoolName(group));
+                    ImGui::Text(ExtFunc::ChannelGroup_GetChannelGroupFileName(group));
+                    ImGui::Text("Is group protected: %s", ExtFunc::ChannelGroup_GetGroupIsProtected(group) ? "true" : "false");
+                    ImGui::Text("Is group read-only: %s", ExtFunc::ChannelGroup_GetGroupIsProtected(group) ? "true" : "false");
                     if (ImGui::Button("Save group without protection")) {
-                        ChannelGroup_SetReadOnly(group, false); //cope
-                        ChannelGroup_SetGroupIsProtected(group, false); //seethe
+                        ExtFunc::ChannelGroup_SetReadOnly(group, false); //cope
+                        ExtFunc::ChannelGroup_SetGroupIsProtected(group, false); //seethe
                         saveGroupFileDialog.Open(); // mald
                     }
                     ImGui::Spacing();
 
-                    ImGui::Text("Group has %i channels", ChannelGroup_GetChannelCount(group));
+                    ImGui::Text("Group has %i channels", ExtFunc::ChannelGroup_GetChannelCount(group));
                     ImGui::InputInt("Channel in group to get", &channelInGroupToUse, 1, 10);
-                    channel = ChannelGroup_GetChannel(group, channelInGroupToUse);
+                    channel = ExtFunc::ChannelGroup_GetChannel(group, channelInGroupToUse);
                     if (channel != nullptr) {
-                        ImGui::Text(Channel_GetChannelName(channel));
+                        ImGui::Text(ExtFunc::Channel_GetChannelName(channel));
                         
                         ImGui::Text(channel->GetChannelType().name);
                         
@@ -395,48 +359,48 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
                         if (strstr(stdstringGUID.c_str(), "6E6FB247-4627")) {
                             Aco_StringChannel* stringChannel(reinterpret_cast<Aco_StringChannel*>(channel));
 
-                        	ImGui::Text("Text in channel: %s", StringChannel_GetString(stringChannel));
+                        	ImGui::Text("Text in channel: %s", ExtFunc::StringChannel_GetString(stringChannel));
                             
                             if (ImGui::Button("Copy to clipboard")) {
-                                ToClipboard(gameHandle, StringChannel_GetString((Aco_StringChannel*)channel));
+                                ToClipboard(gameHandle, ExtFunc::StringChannel_GetString((Aco_StringChannel*)channel));
                             }
                             ImGui::Spacing();
 
                             ImGui::InputText("New text to set", newText, IM_ARRAYSIZE(newText));
                             if (ImGui::Button("Set text")) {
-                                StringChannel_SetString((Aco_StringChannel*)channel, newText);
+                                ExtFunc::StringChannel_SetString((Aco_StringChannel*)channel, newText);
                             }
                         }
 
                         if (strstr(stdstringGUID.c_str(), "F26BB40B-B196")) {
-                            ImGui::Text("Text in channel: %s", StringOperator_GetString(channel));
+                            ImGui::Text("Text in channel: %s", ExtFunc::StringOperator_GetString(channel));
                         }
                         
                         if (strstr(stdstringGUID.c_str(), "6514FE12-88CF")) {
-                            ImGui::Text("Script: \n%s", Lua_GetScript(channel));
+                            ImGui::Text("Script: \n%s", ExtFunc::Lua_GetScript(channel));
                             
                             if (ImGui::Button("Copy to clipboard")) {
-                                ToClipboard(gameHandle, Lua_GetScript(channel));
+                                ToClipboard(gameHandle, ExtFunc::Lua_GetScript(channel));
                             }
                             ImGui::Spacing();
                             
                             ImGui::InputTextMultiline("New script", newScript, IM_ARRAYSIZE(newScript));
                             if (ImGui::Button("Set script")) {
-                                Lua_SetScript(channel, newScript);
+                                ExtFunc::Lua_SetScript(channel, newScript);
                             }
                         }
 
                         if (strstr(stdstringGUID.c_str(), "BC052C38-2D5D")) {
                             Aco_DX8_Texture* texture = (Aco_DX8_Texture*)channel;
-                            ImGui::Text("Mipmap level count: %d", Aco_DX8_Texture_GetMipMapLevels(texture));
+                            ImGui::Text("Mipmap level count: %d", ExtFunc::Aco_DX8_Texture_GetMipMapLevels(texture));
                             ImGui::InputInt("Select Mipmap level", &mipmapLevelToUse, 1, 10);
                             ImGui::Checkbox("Enable preview", &previewTexture);
 
                             //You should turn off the preview when swapping textures
                             //Else the game WILL crash
                             if (!textureLocked && previewTexture) {
-                                IDirect3DTexture9* d3dTexture = Aco_DX8_Texture_GetTexture(texture);
-                                D3DSURFACE_DESC description = Aco_DX8_Texture_GetTextureDescription(texture, mipmapLevelToUse);
+                                IDirect3DTexture9* d3dTexture = ExtFunc::Aco_DX8_Texture_GetTexture(texture);
+                                D3DSURFACE_DESC description = ExtFunc::Aco_DX8_Texture_GetTextureDescription(texture, mipmapLevelToUse);
                                 ImGui::Text("Texture size: %dx%d", description.Width, description.Height);
                                 ImGui::Image((void*)d3dTexture, ImVec2(description.Width, description.Height));
                             }
@@ -450,7 +414,7 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
                         }
 
                         if (strstr(stdstringGUID.c_str(), "376A9C13-8D66")) {
-                            D3DMATERIAL9 material = Aco_DX8_MaterialChannel_GetMaterial(channel);
+                            D3DMATERIAL9 material = ExtFunc::Aco_DX8_MaterialChannel_GetMaterial(channel);
                             ImGui::Text("Power: %f", material.Power);
 
                             ImVec4 specular = ImVec4(material.Specular.r, material.Specular.g, material.Specular.b, material.Specular.a);
@@ -465,7 +429,7 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
 
                         if (strstr(stdstringGUID.c_str(), "21A8923D-B908")) {
                             Aco_DX8_ObjectDataChannel* objectData = (Aco_DX8_ObjectDataChannel*)channel;
-                            ImGui::Text("Vertex count: %d", Aco_DX8_ObjectDataChannel_GetVertexCount(objectData));
+                            ImGui::Text("Vertex count: %d", ExtFunc::Aco_DX8_ObjectDataChannel_GetVertexCount(objectData));
                         }
 
                         if (strstr(stdstringGUID.c_str(), "10C20C0A-7A55")) {
@@ -476,11 +440,11 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
                         }
 
                         if (strstr(stdstringGUID.c_str(), "BE69CCC4-CFC1")) {
-                            ImGui::Text("Float value: %f", Aco_FloatChannel_GetFloat(channel));
-                            ImGui::Text("Default value: %f", Aco_FloatChannel_GetDefaultFloat(channel));
+                            ImGui::Text("Float value: %f", ExtFunc::Aco_FloatChannel_GetFloat(channel));
+                            ImGui::Text("Default value: %f", ExtFunc::Aco_FloatChannel_GetDefaultFloat(channel));
                             ImGui::InputFloat("New float", &newFloat);
                             if (ImGui::Button("Set float")) {
-                                Aco_FloatChannel_SetFloat(channel, newFloat);
+                                ExtFunc::Aco_FloatChannel_SetFloat(channel, newFloat);
                             }
                         }
 
@@ -510,7 +474,7 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
 
         if (saveGroupFileDialog.HasSelected())
         {
-            ChannelGroup_SaveChannelGroup(group, saveGroupFileDialog.GetSelected().string().c_str());
+            ExtFunc::ChannelGroup_SaveChannelGroup(group, saveGroupFileDialog.GetSelected().string().c_str());
             saveGroupFileDialog.ClearSelected();
         }
         if (loadGroupFileDialog.HasSelected())
@@ -519,7 +483,7 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
             //Call the group's start channel
             if (newGroup != nullptr)
             {
-                ChannelGroup_CallStartChannel(newGroup);
+                ExtFunc::ChannelGroup_CallStartChannel(newGroup);
             }
             loadGroupFileDialog.ClearSelected();
         }
@@ -529,8 +493,8 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
             if (binaryFile.is_open())
             {
                 Aco_DX8_Texture* texture = (Aco_DX8_Texture*)channel;
-                char* data = Aco_DX8_Texture_GetTextureBuffer(texture);
-                int size = Aco_DX8_Texture_GetBufferSize(texture);
+                char* data = ExtFunc::Aco_DX8_Texture_GetTextureBuffer(texture);
+                int size = ExtFunc::Aco_DX8_Texture_GetBufferSize(texture);
                 binaryFile.write(data, size);
             }
             loadGroupFileDialog.ClearSelected();
@@ -540,14 +504,14 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
             if (strstr(channelGUID.c_str(), "BC052C38-2D5D")) {
                 textureLocked = true;
                 Aco_DX8_Texture* texture = (Aco_DX8_Texture*)channel;
-                D3DSURFACE_DESC description = Aco_DX8_Texture_GetTextureDescription(texture, mipmapLevelToUse);
+                D3DSURFACE_DESC description = ExtFunc::Aco_DX8_Texture_GetTextureDescription(texture, mipmapLevelToUse);
                 D3DLOCKED_RECT lockedRect;
-                lockedRect.pBits = (void*)Aco_DX8_Texture_GetTextureBuffer(texture);
+                lockedRect.pBits = (void*)ExtFunc::Aco_DX8_Texture_GetTextureBuffer(texture);
                 lockedRect.Pitch = description.Width * 4;
 
-                Aco_DX8_Texture_LockTexture(texture, mipmapLevelToUse, lockedRect);
-                Aco_DX8_Texture_LoadTextureFromFile(texture, (char*)loadTextureFileDialog.GetSelected().string().c_str());
-                Aco_DX8_Texture_UnlockTexture(texture, mipmapLevelToUse);
+                ExtFunc::Aco_DX8_Texture_LockTexture(texture, mipmapLevelToUse, lockedRect);
+                ExtFunc::Aco_DX8_Texture_LoadTextureFromFile(texture, (char*)loadTextureFileDialog.GetSelected().string().c_str());
+                ExtFunc::Aco_DX8_Texture_UnlockTexture(texture, mipmapLevelToUse);
                 textureLocked = false;
             }
             loadGroupFileDialog.ClearSelected();
@@ -555,7 +519,7 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
         if (saveGraphFileDialog.HasSelected()) {
             channelDumpIndex = 0;
             childrenDumpIndex = 0;
-            channelGraph = new UGraphviz::Graph(ChannelGroup_GetPoolName(group), true);
+            channelGraph = new UGraphviz::Graph(ExtFunc::ChannelGroup_GetPoolName(group), true);
             writeChannel(group, channelGraph);
 
             std::ofstream file(saveGraphFileDialog.GetSelected().string().c_str(), std::ofstream::trunc);
@@ -574,14 +538,58 @@ long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice)
     return oEndScene(pDevice);
 }
 
+struct handle_data {
+    unsigned long process_id;
+    HWND window_handle;
+};
+
+BOOL is_main_window(HWND handle)
+{
+    return GetWindow(handle, GW_OWNER) == nullptr && IsWindowVisible(handle);
+}
+
+BOOL CALLBACK enum_windows_callback(HWND handle, LPARAM lParam)
+{
+    handle_data& data = *(handle_data*)lParam;
+    unsigned long process_id = 0;
+    GetWindowThreadProcessId(handle, &process_id);
+    if (data.process_id != process_id || !is_main_window(handle))
+        return TRUE;
+    data.window_handle = handle;
+    return FALSE;
+}
+
+HWND find_main_window(unsigned long process_id)
+{
+    handle_data data {
+      .process_id = process_id,
+      .window_handle = nullptr
+    };
+
+    EnumWindows(enum_windows_callback, (LPARAM)&data);
+    return data.window_handle;
+}
+
 void d3d9_init()
 {
-    assert(kiero::bind(16, (void**)&oReset, hkReset) == kiero::Status::Success);
-    assert(kiero::bind(42, (void**)&oEndScene, hkEndScene) == kiero::Status::Success);
+    if (kiero::bind(16, (void**)&oReset, hkReset) != kiero::Status::Success) {
+        spdlog::error("Could not bind to D3D9 Reset");
+        return;
+    }
 
-    gameHandle = FindWindow(NULL, L"Audiosurf");
+    if (kiero::bind(42, (void**)&oEndScene, hkEndScene) != kiero::Status::Success) {
+        spdlog::error("Could not bind to D3D9 EndScene");
+        return;
+    }
 
+  // TODO: find window dynamically
+    gameHandle = find_main_window(GetCurrentProcessId());
+
+#ifdef _WIN64
+    g_WndProc_o = (WNDPROC)SetWindowLongPtr(gameHandle, GWLP_WNDPROC, (LRESULT)hkWndProc);
+#else
     g_WndProc_o = (WNDPROC)SetWindowLong(gameHandle, GWL_WNDPROC, (LRESULT)hkWndProc);
+#endif
 }
 
 int kieroExampleThread()
@@ -596,6 +604,22 @@ int kieroExampleThread()
         while (true)
         {
             //toggle menu
+
+            // try load engine ptr from global variable
+            if (!engine) {
+#ifdef _WIN64
+                uintptr_t globalEnginePtr = FindFunction("highpoly.dll", "?globalEngine@@3PEAVEngineInterface@@EA");
+#else
+                uintptr_t globalEnginePtr = FindFunction("highpoly.dll", "?globalEngine@@3PAVEngineInterface@@A");
+#endif
+                if (globalEnginePtr) {
+                    EngineInterface* globalEngine = *reinterpret_cast<EngineInterface**>(globalEnginePtr);
+                  if (globalEngine) {
+                      engine = globalEngine;
+                  }
+                }
+            }
+
             if (GetAsyncKeyState(VK_END) & 1)
             {
                 if (showMenu) {
@@ -619,6 +643,204 @@ int kieroExampleThread()
     return 0;
 }
 
+uintptr_t FindFunction(const char* module, const char* symbol) {
+  auto func = reinterpret_cast<uintptr_t>(DetourFindFunction(module, symbol));
+  if (!func) {
+      spdlog::error("Could not find symbol '{}' in [{}]", symbol, module);
+  }
+  return func;
+}
+
+void FindExternalFunctions() {
+#ifdef _WIN64
+    ExtFunc::EngineInterface_GetChannelGroup =
+        FindFunction("highpoly.dll", "?GetChannelGroup@EngineInterface@@UEAAPEAVA3d_ChannelGroup@@H@Z");
+
+    ExtFunc::TrueCallChannel = FindFunction("highpoly.dll", "?CallChannel@A3d_Channel@@UEAAXXZ");
+
+    ExtFunc::ChannelGroup_GetChannelGroupFileName =
+        FindFunction("highpoly.dll", "?GetChannelGroupFileName@A3d_ChannelGroup@@UEAAPEBDXZ");
+    ExtFunc::ChannelGroup_GetPoolName =
+        FindFunction("highpoly.dll", "?GetPoolName@A3d_ChannelGroup@@UEAAPEBDXZ");
+    ExtFunc::ChannelGroup_GetChannelCount =
+        FindFunction("highpoly.dll", "?GetChannelCount@A3d_ChannelGroup@@UEAAHXZ");
+    ExtFunc::ChannelGroup_GetGroupIsProtected =
+        FindFunction("highpoly.dll", "?GetGroupIsProtected@A3d_ChannelGroup@@UEAA_NXZ");
+    ExtFunc::ChannelGroup_GetReadOnly =
+        FindFunction("highpoly.dll", "?GetReadOnly@A3d_ChannelGroup@@UEAA_NXZ");
+    ExtFunc::ChannelGroup_SetGroupIsProtected =
+        FindFunction("highpoly.dll", "?SetGroupIsProtected@A3d_ChannelGroup@@UEAAX_N@Z");
+    ExtFunc::ChannelGroup_SetReadOnly =
+        FindFunction("highpoly.dll", "?SetReadOnly@A3d_ChannelGroup@@UEAAX_N@Z");
+    ExtFunc::ChannelGroup_SaveChannelGroup =
+        FindFunction("highpoly.dll", "?SaveChannelGroup@A3d_ChannelGroup@@UEAA_NPEBD@Z");
+    ExtFunc::ChannelGroup_GetGroupIndex =
+        FindFunction("highpoly.dll", "?GetGroupIndex@A3d_ChannelGroup@@UEAAHXZ");
+    ExtFunc::ChannelGroup_CallStartChannel =
+        FindFunction("highpoly.dll", "?CallStartChannel@A3d_ChannelGroup@@UEAAXXZ");
+    ExtFunc::ChannelGroup_GetChannel =
+        FindFunction("highpoly.dll", "?GetChannel@A3d_ChannelGroup@@UEAAPEAVA3d_Channel@@H@Z");
+
+    ExtFunc::Channel_GetChannelName =
+        FindFunction("highpoly.dll", "?GetChannelName@A3d_Channel@@QEAAPEBDXZ");
+    ExtFunc::Channel_GetChild =
+        FindFunction("highpoly.dll", "?GetChild@A3d_Channel@@QEAAPEAV1@H@Z");
+    ExtFunc::Channel_GetChildCount =
+        FindFunction("highpoly.dll", "?GetChildCount@A3d_Channel@@QEAAHXZ");
+    ExtFunc::Channel_GetChannelIDIndexNr =
+        FindFunction("highpoly.dll", "?GetChannelIDIndexNr@A3d_Channel@@QEAAHXZ");
+
+    ExtFunc::StringChannel_GetString =
+        FindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?GetString@Aco_StringChannel@@UEAAPEBDXZ");
+    ExtFunc::StringOperator_GetString =
+        FindFunction("F26BB40B-B196-4AB9-B59E-FA7C8FF436F9.dll", "?GetString@Aco_StringOperator@@UEAAPEBDXZ");
+    ExtFunc::Lua_GetScript =
+        FindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?GetScript@Aco_Lua@@UEAAPEBDXZ");
+
+    ExtFunc::StringChannel_SetString =
+        FindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?SetString@Aco_StringChannel@@UEAAXPEBD@Z");
+    ExtFunc::Lua_SetScript =
+        FindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?SetScript@Aco_Lua@@UEAA_NPEBD@Z");
+
+    ExtFunc::Aco_DX8_Texture_GetDesiredWidth =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetDesiredWidth@Aco_DX8_Texture@@UEAAHXZ");
+    ExtFunc::Aco_DX8_Texture_GetDesiredHeight =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetDesiredHeight@Aco_DX8_Texture@@UEAAHXZ");
+    ExtFunc::Aco_DX8_Texture_GetTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTexture@Aco_DX8_Texture@@UEAAPEAUIDirect3DTexture9@@XZ");
+    ExtFunc::Aco_DX8_Texture_GetTextureBuffer =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTextureBuffer@Aco_DX8_Texture@@UEAAPEADXZ");
+    ExtFunc::Aco_DX8_Texture_GetBufferSize =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetBufferSize@Aco_DX8_Texture@@UEAAHXZ");
+    ExtFunc::Aco_DX8_Texture_LoadTextureFromFile =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?LoadTextureFromFile@Aco_DX8_Texture@@UEAA_NPEAD@Z");
+    ExtFunc::Aco_DX8_Texture_LockTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?LockTexture@Aco_DX8_Texture@@UEAAJHAEAU_D3DLOCKED_RECT@@@Z");
+    ExtFunc::Aco_DX8_Texture_UnlockTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?UnlockTexture@Aco_DX8_Texture@@UEAAXH@Z");
+    ExtFunc::Aco_DX8_Texture_GetMipMapLevels =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetMipMapLevels@Aco_DX8_Texture@@UEAAHXZ");
+    ExtFunc::Aco_DX8_Texture_GetTextureDescription =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTextureDescription@Aco_DX8_Texture@@UEAA?AU_D3DSURFACE_DESC@@H@Z");
+
+    ExtFunc::Aco_DX8_MaterialChannel_GetMaterial =
+        FindFunction("376A9C13-8D66-49EC-BAE5-D59BE13BC519.dll", "?GetMaterialValue@Aco_DX8_MaterialChannel@@UEAAMH@Z");
+
+    ExtFunc::Aco_DX8_ObjectDataChannel_GetVertexCount =
+        FindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexCount@Aco_DX8_ObjectDataChannel@@UEAAHXZ");
+    ExtFunc::Aco_DX8_ObjectDataChannel_GetVertexPosition =
+        FindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexPosition@Aco_DX8_ObjectDataChannel@@UEAA?AUD3DXVECTOR3@@K@Z");
+
+    ExtFunc::Aco_DX8_ObjectChannel_GetPosition =
+        FindFunction("10C20C0A-7A55-4084-8676-95E5699BCEC2.dll", "?GetPosition@Aco_DX8_ObjectChannel@@UEAA?AUD3DXVECTOR3@@XZ");
+
+    ExtFunc::Aco_FloatChannel_GetFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetFloat@Aco_FloatChannel@@UEAAMXZ");
+    ExtFunc::Aco_FloatChannel_GetDefaultFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetDefaultFloat@Aco_FloatChannel@@UEAAMXZ");
+    ExtFunc::Aco_FloatChannel_SetFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?SetFloat@Aco_FloatChannel@@UEAAXM@Z");
+
+    ExtFunc::Aco_VectorChannel_GetVector =
+        FindFunction("9D045960-EAC2-4C40-9BBF-10F32F7FA305.dll", "?GetVector@Aco_VectorChannel@@UEAA?AUD3DXVECTOR3@@XZ");
+#else
+    ExtFunc::EngineInterface_GetChannelGroup =
+        FindFunction("highpoly.dll", "?GetChannelGroup@EngineInterface@@UAEPAVA3d_ChannelGroup@@H@Z");
+
+    ExtFunc::TrueCallChannel = FindFunction("highpoly.dll", "?CallChannel@A3d_Channel@@UAEXXZ");
+
+    ExtFunc::ChannelGroup_GetChannelGroupFileName =
+        FindFunction("highpoly.dll", "?GetChannelGroupFileName@A3d_ChannelGroup@@UAEPBDXZ");
+    ExtFunc::ChannelGroup_GetPoolName =
+        FindFunction("highpoly.dll", "?GetPoolName@A3d_ChannelGroup@@UAEPBDXZ");
+    ExtFunc::ChannelGroup_GetChannelCount =
+        FindFunction("highpoly.dll", "?GetChannelCount@A3d_ChannelGroup@@UAEHXZ");
+    ExtFunc::ChannelGroup_GetGroupIsProtected =
+        FindFunction("highpoly.dll", "?GetGroupIsProtected@A3d_ChannelGroup@@UAE_NXZ");
+    ExtFunc::ChannelGroup_GetReadOnly =
+        FindFunction("highpoly.dll", "?GetReadOnly@A3d_ChannelGroup@@UAE_NXZ");
+    ExtFunc::ChannelGroup_SetGroupIsProtected =
+        FindFunction("highpoly.dll", "?SetGroupIsProtected@A3d_ChannelGroup@@UAEX_N@Z");
+    ExtFunc::ChannelGroup_SetReadOnly =
+        FindFunction("highpoly.dll", "?SetReadOnly@A3d_ChannelGroup@@UAEX_N@Z");
+    ExtFunc::ChannelGroup_SaveChannelGroup =
+        FindFunction("highpoly.dll", "?SaveChannelGroup@A3d_ChannelGroup@@UAE_NPBD@Z");
+    ExtFunc::ChannelGroup_GetGroupIndex =
+        FindFunction("highpoly.dll", "?GetGroupIndex@A3d_ChannelGroup@@UAEHXZ");
+    ExtFunc::ChannelGroup_CallStartChannel =
+        FindFunction("highpoly.dll", "?CallStartChannel@A3d_ChannelGroup@@UAEXXZ");
+    ExtFunc::ChannelGroup_GetChannel =
+        FindFunction("highpoly.dll", "?GetChannel@A3d_ChannelGroup@@UAEPAVA3d_Channel@@H@Z");
+
+    ExtFunc::Channel_GetChannelName =
+        FindFunction("highpoly.dll", "?GetChannelName@A3d_Channel@@QAEPBDXZ");
+    ExtFunc::Channel_GetChild =
+        FindFunction("highpoly.dll", "?GetChild@A3d_Channel@@QAEPAV1@H@Z");
+    ExtFunc::Channel_GetChildCount =
+        FindFunction("highpoly.dll", "?GetChildCount@A3d_Channel@@QAEHXZ");
+    ExtFunc::Channel_GetChannelIDIndexNr =
+        FindFunction("highpoly.dll", "?GetChannelIDIndexNr@A3d_Channel@@QAEHXZ");
+
+    ExtFunc::StringChannel_GetString =
+        FindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?GetString@Aco_StringChannel@@UAEPBDXZ");
+    ExtFunc::StringOperator_GetString =
+        FindFunction("F26BB40B-B196-4AB9-B59E-FA7C8FF436F9.dll", "?GetString@Aco_StringOperator@@UAEPBDXZ");
+    ExtFunc::Lua_GetScript =
+        FindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?GetScript@Aco_Lua@@UAEPBDXZ");
+
+    ExtFunc::StringChannel_SetString =
+        FindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?SetString@Aco_StringChannel@@UAEXPBD@Z");
+    ExtFunc::Lua_SetScript =
+        FindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?SetScript@Aco_Lua@@UAE_NPBD@Z");
+
+    ExtFunc::Aco_DX8_Texture_GetDesiredWidth =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetDesiredWidth@Aco_DX8_Texture@@UAEHXZ");
+    ExtFunc::Aco_DX8_Texture_GetDesiredHeight =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetDesiredHeight@Aco_DX8_Texture@@UAEHXZ");
+    ExtFunc::Aco_DX8_Texture_GetTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTexture@Aco_DX8_Texture@@UAEPAUIDirect3DTexture9@@XZ");
+    ExtFunc::Aco_DX8_Texture_GetTextureBuffer =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTextureBuffer@Aco_DX8_Texture@@UAEPADXZ");
+    ExtFunc::Aco_DX8_Texture_GetBufferSize =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetBufferSize@Aco_DX8_Texture@@UAEHXZ");
+    ExtFunc::Aco_DX8_Texture_LoadTextureFromFile =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?LoadTextureFromFile@Aco_DX8_Texture@@UAE_NPAD@Z");
+    ExtFunc::Aco_DX8_Texture_LockTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?LockTexture@Aco_DX8_Texture@@UAEJHAAU_D3DLOCKED_RECT@@@Z");
+    ExtFunc::Aco_DX8_Texture_UnlockTexture =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?UnlockTexture@Aco_DX8_Texture@@UAEXH@Z");
+    ExtFunc::Aco_DX8_Texture_GetMipMapLevels =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetMipMapLevels@Aco_DX8_Texture@@UAEHXZ");
+    ExtFunc::Aco_DX8_Texture_GetTextureDescription =
+        FindFunction("BC052C38-2D5D-4F0C-A0CA-654D0AFC584A.dll", "?GetTextureDescription@Aco_DX8_Texture@@UAE?AU_D3DSURFACE_DESC@@H@Z");
+
+    ExtFunc::Aco_DX8_MaterialChannel_GetMaterial =
+        FindFunction("376A9C13-8D66-49EC-BAE5-D59BE13BC519.dll", "?GetMaterialValue@Aco_DX8_MaterialChannel@@UAEMH@Z");
+
+    ExtFunc::Aco_DX8_ObjectDataChannel_GetVertexCount =
+        FindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexCount@Aco_DX8_ObjectDataChannel@@UAEHXZ");
+    ExtFunc::Aco_DX8_ObjectDataChannel_GetVertexPosition =
+        FindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexPosition@Aco_DX8_ObjectDataChannel@@UAE?AUD3DXVECTOR3@@K@Z");
+
+    ExtFunc::Aco_DX8_ObjectChannel_GetPosition =
+        FindFunction("10C20C0A-7A55-4084-8676-95E5699BCEC2.dll", "?GetPosition@Aco_DX8_ObjectChannel@@UAE?AUD3DXVECTOR3@@XZ");
+
+    ExtFunc::Aco_FloatChannel_GetFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetFloat@Aco_FloatChannel@@UAEMXZ");
+    ExtFunc::Aco_FloatChannel_GetDefaultFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetDefaultFloat@Aco_FloatChannel@@UAEMXZ");
+    ExtFunc::Aco_FloatChannel_SetFloat =
+        FindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?SetFloat@Aco_FloatChannel@@UAEXM@Z");
+
+    ExtFunc::Aco_VectorChannel_GetVector =
+        FindFunction("9D045960-EAC2-4C40-9BBF-10F32F7FA305.dll", "?GetVector@Aco_VectorChannel@@UAE?AUD3DXVECTOR3@@XZ");
+#endif
+}
+
+
+void* pPtr = nullptr;
+
+
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved
@@ -628,149 +850,30 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 
     switch (ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH: {
+        // set up logger
+        auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
+        auto logger = std::make_shared<spdlog::logger>("msvc_logger", sink);
+        spdlog::set_default_logger(logger);
+
+        spdlog::debug("DLL Startup");
+
         CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)kieroExampleThread, NULL, 0, NULL);
 
         DetourRestoreAfterWith();
 
-#pragma region Find functions
-        TrueCallChannel =
-            (void(__thiscall*)(A3d_Channel*))
-            DetourFindFunction("highpoly.dll", "?CallChannel@A3d_Channel@@UAEXXZ");
-        ChannelGroup_GetChannelGroupFileName =
-            (const char* (__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetChannelGroupFileName@A3d_ChannelGroup@@UAEPBDXZ");
-        ChannelGroup_GetPoolName =
-            (const char* (__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetPoolName@A3d_ChannelGroup@@UAEPBDXZ");
-        ChannelGroup_GetChannelCount =
-            (int(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetPoolName@A3d_ChannelGroup@@UAEPBDXZ");
-        ChannelGroup_GetGroupIsProtected =
-            (bool(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetGroupIsProtected@A3d_ChannelGroup@@UAE_NXZ");
-        ChannelGroup_GetReadOnly =
-            (bool(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetReadOnly@A3d_ChannelGroup@@UAE_NXZ");
-        ChannelGroup_SetGroupIsProtected =
-            (void(__thiscall*)(A3d_ChannelGroup*, bool))
-            DetourFindFunction("highpoly.dll", "?SetGroupIsProtected@A3d_ChannelGroup@@UAEX_N@Z");
-        ChannelGroup_SetReadOnly =
-            (void(__thiscall*)(A3d_ChannelGroup*, bool))
-            DetourFindFunction("highpoly.dll", "?SetReadOnly@A3d_ChannelGroup@@UAEX_N@Z");
-        ChannelGroup_SaveChannelGroup =
-            (bool(__thiscall*)(A3d_ChannelGroup*, const char*))
-            DetourFindFunction("highpoly.dll", "?SaveChannelGroup@A3d_ChannelGroup@@UAE_NPBD@Z");
-        ChannelGroup_GetGroupIndex =
-            (int(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?GetGroupIndex@A3d_ChannelGroup@@UAEHXZ");
-        ChannelGroup_CallStartChannel =
-            (void(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?CallStartChannel@A3d_ChannelGroup@@UAEXXZ");
-        ChannelGroup_CallStartChannel =
-            (void(__thiscall*)(A3d_ChannelGroup*))
-            DetourFindFunction("highpoly.dll", "?CallStartChannel@A3d_ChannelGroup@@UAEXXZ");
-        ChannelGroup_GetChannel =
-            (A3d_Channel * (__thiscall*)(A3d_ChannelGroup*, int))
-            DetourFindFunction("highpoly.dll", "?GetChannel@A3d_ChannelGroup@@UAEPAVA3d_Channel@@H@Z");
+        FindExternalFunctions();
 
-        Channel_GetChannelName =
-            (const char* (__thiscall*)(A3d_Channel*))
-            DetourFindFunction("highpoly.dll", "?GetChannelName@A3d_Channel@@QAEPBDXZ");
-        Channel_GetChild =
-            (A3d_Channel* (__thiscall*)(A3d_Channel*, int))
-            DetourFindFunction("highpoly.dll", "?GetChild@A3d_Channel@@QAEPAV1@H@Z");
-        Channel_GetChildCount =
-            (int (__thiscall*)(A3d_Channel*))
-            DetourFindFunction("highpoly.dll", "?GetChildCount@A3d_Channel@@QAEHXZ");
-        Channel_GetChannelIDIndexNr =
-            (int (__thiscall*)(A3d_Channel*))
-            DetourFindFunction("highpoly.dll", "?GetChannelIDIndexNr@A3d_Channel@@QAEHXZ");
-
-        StringChannel_GetString =
-            (const char* (__thiscall*)(Aco_StringChannel*))
-            DetourFindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?GetString@Aco_StringChannel@@UAEPBDXZ");
-        StringOperator_GetString =
-            (const char* (__thiscall*)(void*))
-            DetourFindFunction("F26BB40B-B196-4AB9-B59E-FA7C8FF436F9.dll", "?GetString@Aco_StringOperator@@UAEPBDXZ");
-        Lua_GetScript =
-            (const char* (__thiscall*)(void*))
-            DetourFindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?GetScript@Aco_Lua@@UAEPBDXZ");
-
-        StringChannel_SetString =
-            (void (__thiscall*)(Aco_StringChannel*, const char*))
-            DetourFindFunction("6E6FB247-4627-4FBE-8973-48344F23881E.dll", "?SetString@Aco_StringChannel@@UAEXPBD@Z");
-        Lua_SetScript =
-            (BOOL (__thiscall*)(void*, const char*))
-            DetourFindFunction("6514FE12-88CF-480B-A3D8-7730C0CD23B3.dll", "?SetScript@Aco_Lua@@UAE_NPBD@Z");
-
-        Aco_DX8_Texture_GetDesiredWidth =
-            (int (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetDesiredWidth@Aco_DX8_Texture@@UAEHXZ");
-        Aco_DX8_Texture_GetDesiredHeight =
-            (int (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetDesiredHeight@Aco_DX8_Texture@@UAEHXZ");
-        Aco_DX8_Texture_GetTexture =
-            (IDirect3DTexture9* (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetTexture@Aco_DX8_Texture@@UAEPAUIDirect3DTexture9@@XZ");
-        Aco_DX8_Texture_GetTextureBuffer =
-            (char* (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetTextureBuffer@Aco_DX8_Texture@@UAEPADXZ");
-        Aco_DX8_Texture_GetBufferSize =
-            (int (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetBufferSize@Aco_DX8_Texture@@UAEHXZ");
-        Aco_DX8_Texture_LoadTextureFromFile =
-            (BOOL (__thiscall*)(Aco_DX8_Texture*, char*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?LoadTextureFromFile@Aco_DX8_Texture@@UAE_NPAD@Z");
-        Aco_DX8_Texture_LockTexture =
-            (HRESULT (__thiscall*)(Aco_DX8_Texture*, int, D3DLOCKED_RECT&))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?LockTexture@Aco_DX8_Texture@@UAEJHAAU_D3DLOCKED_RECT@@@Z");
-        Aco_DX8_Texture_UnlockTexture =
-            (void (__thiscall*)(Aco_DX8_Texture*, int))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?UnlockTexture@Aco_DX8_Texture@@UAEXH@Z");
-        Aco_DX8_Texture_GetMipMapLevels =
-            (int (__thiscall*)(Aco_DX8_Texture*))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetMipMapLevels@Aco_DX8_Texture@@UAEHXZ");
-        Aco_DX8_Texture_GetTextureDescription =
-            (D3DSURFACE_DESC (__thiscall*)(Aco_DX8_Texture*, int))
-            DetourFindFunction("BC052C38-2D5D-4f0c-A0CA-654D0AFC584A.dll", "?GetTextureDescription@Aco_DX8_Texture@@UAE?AU_D3DSURFACE_DESC@@H@Z");
-
-        Aco_DX8_MaterialChannel_GetMaterial =
-            (D3DMATERIAL9 (__thiscall*)(void*))
-            DetourFindFunction("376A9C13-8D66-49EC-BAE5-D59BE13BC519.dll", "?GetMaterialValue@Aco_DX8_MaterialChannel@@UAEMH@Z");
-
-        Aco_DX8_ObjectDataChannel_GetVertexCount =
-            (int (__thiscall*)(Aco_DX8_ObjectDataChannel*))
-            DetourFindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexCount@Aco_DX8_ObjectDataChannel@@UAEHXZ");
-        Aco_DX8_ObjectDataChannel_GetVertexPosition =
-            (D3DXVECTOR3 (__thiscall*)(Aco_DX8_ObjectDataChannel*, DWORD))
-            DetourFindFunction("21A8923D-B908-4104-AE88-B6718D8A8678.dll", "?GetVertexPosition@Aco_DX8_ObjectDataChannel@@UAE?AUD3DXVECTOR3@@K@Z");
-
-        Aco_DX8_ObjectChannel_GetPosition =
-            (D3DXVECTOR3 (__thiscall*)(void*))
-            DetourFindFunction("10C20C0A-7A55-4084-8676-95E5699BCEC2.dll", "?GetPosition@Aco_DX8_ObjectChannel@@UAE?AUD3DXVECTOR3@@XZ");
-
-        Aco_FloatChannel_GetFloat =
-            (float (__thiscall*)(void*))
-            DetourFindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetFloat@Aco_FloatChannel@@UAEMXZ");
-        Aco_FloatChannel_GetDefaultFloat =
-            (float(__thiscall*)(void*))
-            DetourFindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?GetDefaultFloat@Aco_FloatChannel@@UAEMXZ");
-        Aco_FloatChannel_SetFloat =
-            (void (__thiscall*)(void*, float))
-            DetourFindFunction("BE69CCC4-CFC1-4362-AC81-767D199BBFC3.dll", "?SetFloat@Aco_FloatChannel@@UAEXM@Z");
-
-        Aco_VectorChannel_GetVector =
-            (D3DXVECTOR3 (__thiscall*)(void*))
-            DetourFindFunction("9D045960-EAC2-4C40-9BBF-10F32F7FA305.dll", "?GetVector@Aco_VectorChannel@@UAE?AUD3DXVECTOR3@@XZ");
-#pragma endregion
-
-
-
+        pPtr = reinterpret_cast<PVOID>(uintptr_t(ExtFunc::TrueCallChannel));
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourAttach(&(PVOID&)TrueCallChannel, CallChannelHook);
+        DetourAttach(&pPtr, CallChannelHook);
         DetourTransactionCommit();
+        // reset TrueCallChannel location to detour'd code cave
+        ExtFunc::TrueCallChannel = reinterpret_cast<uintptr_t>(pPtr);
+
+        break;
+    }
 
     case DLL_PROCESS_DETACH:
         break;

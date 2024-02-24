@@ -66,6 +66,9 @@
     <ClInclude Include="UGraphviz\UGraphviz.hpp">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="ExternalFunc.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -110,5 +113,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="quest3d_api.win32.inl">
+      <Filter>Quelldateien</Filter>
+    </None>
+    <None Include="quest3d_api.x64.inl">
+      <Filter>Quelldateien</Filter>
+    </None>
   </ItemGroup>
 </Project>
